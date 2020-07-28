@@ -26,69 +26,116 @@
 
 ## 3. 研究方法
 
-### 	3.1 数据获取
+### 3.1 数据获取
 
-#### 		3.3.1 获取当下最热门的400首音乐
+##### **3.1.1 获取当下最热门的400首音乐**
 
-#### 		3.3.2 音乐格式转换与时长处理
+​	由于数据量要求过大，仅仅通过人工获取数据明显是一个不现实的手段，我们选择利用爬虫工具对数据进行大批量的获取。但由于抖音短视频官网做了相当严密的反爬虫机制，很难从抖音官网获取视频信息，以及得到其背景音乐，所以我们选择使用第三方抖音数据分析网站来获取我们需要的热门音乐数据。
 
-### 	3.2 数据处理
+​	我们使用了*新榜、抖查查、66榜、飞瓜数据、卡思数据、蝉妈妈*等近十个分析网站，最终选取了蝉妈妈作为音乐数据来源。
 
-#### 		3.2.1
+​	注册会员后，通过点击音乐榜单，在f12控制台的network窗口监听到浏览器发出的http请求以及服务器返回的数据，经过筛选得到获取音乐榜单的请求：
 
-#### 		3.2.2
+*search?keyword=&page=1&size=50&orderby=user_count&incr_type=7d&order=desc*
 
-### 	3.3 特征提取
+​	通过分析header信息，利用python的*request*库模拟header对服务器发出请求，并且筛选得到音乐的名称，播放量等信息，写入csv:
 
-### 	3.4 音乐分类
+```python
+try:
+  response = requests.get(url, headers=headers)
+  if response.status_code == 200:
+    list = response.json().get('data').get('list')
+    for item in list:
+      del item['cover_image']
+      del item['use_trend']
+      del item['hot_awemes']
+      del item['is_fav']
+      return list
+except requests.ConnectionError as e:
+   print('Error', e.args)
+...
+with open(csvPath, "w") as csvfile:
+  writer = csv.writer(csvfile)
+  writer.writerow(["音乐ID", "音乐名", "创作者", "歌曲时间", "使用人数", "使用人数增量"])
+  for item in music_info:
+    writer.writerow([item.get('music_id'), item.get('title'), item.get('author'), item.get('audition_duration'),
+                     item.get('user_count'), item.get('user_incr')])
+    print("csv写入成功！")
 
-### 音乐频谱图 
+```
 
-将mp3文件转成wav文件后，提取文件中所有的帧的信息。若文件为单通道，则直接将所有帧形成一维矩阵，若为双通道，则提取左声道的帧形成一维矩阵。最后将一维矩阵归一化，再将离散的点连线作图。
+​	在得到音乐信息后，通过音乐的id，再次向服务器请求，获取音乐的mp3地址，下载后存储在本地:
 
-#### 图例
+```python
+ try:
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+      src = response.json().get('data')
+      print(name, end=": ")
+      if src != '' and src != 'None':
+        music = requests.get(src)
+        # 下面填写本地存储的路径，记得后缀添加mp3
+        open(downLoadPath + name + '.mp3', 'wb').write(music.content)
+        print("成功")
+     else:
+      print("歌曲不存在")
+	except requests.ConnectionError as e:
+		print('Error', e.args)  # 输出异常信息
+```
 
-<figure class="half">     
-    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%A2%91%E8%B0%B1%E5%9B%BE/DancingWithYourGhost.wav.png" width="400"/ >     
-    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%A2%91%E8%B0%B1%E5%9B%BE/%E5%B1%B1%E5%A6%96.wav.png" width="400"/> 
-</figure>
+**3.1.2** **音乐格式转换与时长处理**
 
-<figure class="half">     
-    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%A2%91%E8%B0%B1%E5%9B%BE/%E6%83%B3%E8%A7%81%E4%BD%A0%E6%83%B3%E8%A7%81%E4%BD%A0%E6%83%B3%E8%A7%81%E4%BD%A0.wav.png" width="400"/ >     
-    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%A2%91%E8%B0%B1%E5%9B%BE/%E7%88%B1%EF%BC%8C%E5%AD%98%E5%9C%A8.wav.png" width="400"/> 
-</figure>
+​	由于下载的音乐格式均为*mp3*，而后续所需的所有格式均为wav，所以先进行进一步的mp3到wav的转化:
 
-### 音乐语谱图
+```python
+for file in files: #遍历文件夹
+     if not os.path.isdir(file): #判断是否是文件夹，不是文件夹才打开
+          # 读取mp3的波形数据
+          sound = AudioSegment.from_file(path+"/"+file, format='MP3')
+          # 将读取的波形数据转化为wav
+          f = wave.open(file+".wav", 'wb')
+          f.setnchannels(1)  # 频道数
+          f.setsampwidth(2)  # 量化位数
+          f.setframerate(16000)  # 取样频率
+          f.setnframes(len(sound._data))  # 取样点数，波形数据的长度
+          f.writeframes(sound._data)  # 写入波形数据
+          f.close()
+```
 
-将音乐频谱图中得到的一维矩阵，将该矩阵形成谱图。
+​	由于大多数短视频的时长只有15s到20s，所以我们可以进一步将wav缩短至15s，因为我们认为，对于观看者而言，前15秒不能吸引到注意力，那么观看者将会毫不犹豫的切换到下一个视频。缩短音乐时长也同时降低了后期处理的复杂性:
 
-#### 图例
+```python
+def split_music(begin, end, filepath, filename):
+    # 导入音乐
+    song = AudioSegment.from_mp3(filepath)
 
-<figure class="half">     
-    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E8%AF%AD%E8%B0%B1%E5%9B%BE/%E4%BD%A0%E5%95%8A%E4%BD%A0%E5%95%8A.wav.png" width="400"/ >     
-    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E8%AF%AD%E8%B0%B1%E5%9B%BE/%E5%B1%B1%E5%A6%96.wav.png" width="400"/> 
-</figure>
+    # 取begin秒到end秒间的片段
+    song = song[begin * 1000: end * 1000]
 
-<figure class="half">     
-    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E8%AF%AD%E8%B0%B1%E5%9B%BE/%E5%BE%AE%E5%BE%AE.wav.png" width="400"/ >     
-    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E8%AF%AD%E8%B0%B1%E5%9B%BE/%E7%88%B1%EF%BC%8C%E5%AD%98%E5%9C%A8.wav.png" width="400"/> 
-</figure>
+    # 存储为临时文件做备份
+    temp_path = '../音乐/backup/' + filename+'.wav'
+    song.export(temp_path)
+    return temp_path
+```
 
-### 音乐音调变化图
+### 3.2 数据处理
+
+### 3.3 特征提取
+
+### 3.4 音乐分类
+
+
+
+
+
+以下是格式还未处理的
+
+---
+
+### 音乐音调变化图(这部分貌似写分析方法的时候可以用上 所以我没删 然后midi文件生成应该是用来获取和弦还是啥的吧 不知道放在哪块我就没动)
 
 由于wav文件是模仿音乐的波形，是时域上的变化，因此想要想要得到频域上的变化，就需要利用傅里叶变换，将波形拆分成多个正弦曲线。不同的正弦曲线，代表的不同音调的波形，所以我们无法获取绝对应高，只能比较时间维度上，相对的音调变化。我们认为，频率高且声音响度大的正弦曲线代表了高音，而频率低且声音响度低的曲线代表了低音。于是，我们对音乐帧进行分段，8000个帧为一小段，进行快速傅里叶变换，并对分解的曲线进行对应其响度上的加权，最终获得该小段上的相对音高。最终将这些音高做成曲线。
 
-#### 图例
-
-<figure class="half">     
-    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E8%B0%83%E5%9B%BE/DancingWithYourGhost.wav.png" width="400"/ >     
-    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E8%B0%83%E5%9B%BE/%E4%B8%80%E5%8D%83%E9%9B%B6%E4%B8%80%E6%AC%A1%E6%88%91%E7%88%B1%E4%BD%A0.wav.png" width="400"/> 
-</figure>
-
-<figure class="half">     
-    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E8%B0%83%E5%9B%BE/%E5%8F%AB%E6%88%91baby.wav.png" width="400"/ >     
-    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E8%B0%83%E5%9B%BE/%E6%97%A7%E6%A2%A6%E4%B8%80%E5%9C%BA.wav.png" width="400"/> 
-</figure>
 
 ### midi文件生成
 
@@ -100,16 +147,7 @@
 山妖mid文件音乐
 
 <audio id="audio" controls="" preload="none"> <source  src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E4%B9%90/%E5%B1%B1%E5%A6%96mp32mid.mp3"> </audio>
-### 音乐自相似矩阵图
 
-读取midi文件,根据其音调信息生成谱图
-
-#### 图例
-
-<figure class="half">     
-    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E8%87%AA%E7%9B%B8%E4%BC%BC%E7%9F%A9%E9%98%B5/DancingWithYourGhost.mid.png" width="400"/ >     
-    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E8%87%AA%E7%9B%B8%E4%BC%BC%E7%9F%A9%E9%98%B5/%E4%BD%A0%E5%95%8A%E4%BD%A0%E5%95%8A.mid.png" width="400"/> 
-</figure>
 ## 研究方法
 
 ### 音乐特征提取分类
@@ -224,13 +262,96 @@ MiniBatchKMeans是KMeans算法的变体，该算法使用小型批处理来缩�
 
 ### 音乐流派分类
 
+---
+
+以上是格式还未处理的
 
 
-##  4. 结论
 
 
 
-## 5. 参考文献
+
+
+##  4. 案例分析
+
+#### 4.1 数据爬取以及处理
+
+​	以蝉妈妈数据榜单前50首为例，通过对header的解析，模拟浏览器向服务器发出请求，最终保存音乐以及音乐信息至本地
+
+> 待补充....
+
+#### 4.2 特征提取
+
+##### 4.2.1 音乐频谱图 
+
+将mp3文件转成wav文件后，提取文件中所有的帧的信息。若文件为单通道，则直接将所有帧形成一维矩阵，若为双通道，则提取左声道的帧形成一维矩阵。最后将一维矩阵归一化，再将离散的点连线作图。任取十首，示范如下：
+
+**图例**
+
+<figure class="half">     
+    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%A2%91%E8%B0%B1%E5%9B%BE/DancingWithYourGhost.wav.png" width="400"/ >     
+    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%A2%91%E8%B0%B1%E5%9B%BE/%E5%B1%B1%E5%A6%96.wav.png" width="400"/> 
+</figure>
+
+<figure class="half">     
+    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%A2%91%E8%B0%B1%E5%9B%BE/%E6%83%B3%E8%A7%81%E4%BD%A0%E6%83%B3%E8%A7%81%E4%BD%A0%E6%83%B3%E8%A7%81%E4%BD%A0.wav.png" width="400"/ >     
+    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%A2%91%E8%B0%B1%E5%9B%BE/%E7%88%B1%EF%BC%8C%E5%AD%98%E5%9C%A8.wav.png" width="400"/> 
+</figure>
+
+### 
+
+**4.2.2** **音乐语谱图**
+
+将音乐频谱图中得到的一维矩阵，将该矩阵形成谱图。任取4首效果如下:
+
+图例：
+
+<figure class="half">     
+    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E8%AF%AD%E8%B0%B1%E5%9B%BE/%E4%BD%A0%E5%95%8A%E4%BD%A0%E5%95%8A.wav.png" width="400"/ >     
+    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E8%AF%AD%E8%B0%B1%E5%9B%BE/%E5%B1%B1%E5%A6%96.wav.png" width="400"/> 
+</figure>
+
+<figure class="half">     
+    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E8%AF%AD%E8%B0%B1%E5%9B%BE/%E5%BE%AE%E5%BE%AE.wav.png" width="400"/ >     
+    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E8%AF%AD%E8%B0%B1%E5%9B%BE/%E7%88%B1%EF%BC%8C%E5%AD%98%E5%9C%A8.wav.png" width="400"/> 
+</figure>
+
+**4.2.3 音乐音调变化图**
+
+利用傅里叶变换，将波形拆分成多个正弦曲线。不同的正弦曲线，代表的不同音调的波形，所以我们无法获取绝对应高，只能比较时间维度上，相对的音调变化。对音乐帧进行分段，8000个帧为一小段，进行快速傅里叶变换，并对分解的曲线进行对应其响度上的加权，最终获得该小段上的相对音高。最终将这些音高做成曲线。任意取四首效果如下
+
+**图例**
+
+<figure class="half">     
+    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E8%B0%83%E5%9B%BE/DancingWithYourGhost.wav.png" width="400"/ >     
+    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E8%B0%83%E5%9B%BE/%E4%B8%80%E5%8D%83%E9%9B%B6%E4%B8%80%E6%AC%A1%E6%88%91%E7%88%B1%E4%BD%A0.wav.png" width="400"/> 
+</figure>
+
+<figure class="half">     
+    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E8%B0%83%E5%9B%BE/%E5%8F%AB%E6%88%91baby.wav.png" width="400"/ >     
+    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E8%B0%83%E5%9B%BE/%E6%97%A7%E6%A2%A6%E4%B8%80%E5%9C%BA.wav.png" width="400"/> 
+</figure>
+
+**4.2.4 音乐自相似矩阵图**
+
+读取midi文件,根据其音调信息生成谱图
+
+**图例**
+
+<figure class="half">     
+    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E8%87%AA%E7%9B%B8%E4%BC%BC%E7%9F%A9%E9%98%B5/DancingWithYourGhost.mid.png" width="400"/ >     
+    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E8%87%AA%E7%9B%B8%E4%BC%BC%E7%9F%A9%E9%98%B5/%E4%BD%A0%E5%95%8A%E4%BD%A0%E5%95%8A.mid.png" width="400"/> 
+</figure>
+
+
+
+
+
+
+
+## 5. 结论
+
+## 6. 参考文献
 
 [R语言中的遗传算法](http://blog.fens.me/algorithm-ga-r/)
 
@@ -240,6 +361,6 @@ MiniBatchKMeans是KMeans算法的变体，该算法使用小型批处理来缩�
 
 
 
-## 6. 不足以及展望
+## 7. 不足以及展望
 
 只研究了声学三要素相关的知识，没有研究音乐三要素（旋律，和声，节奏）相关的内容，并没有直接的midi文件，没有生成音乐
