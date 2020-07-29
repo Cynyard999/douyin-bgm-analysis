@@ -1,6 +1,6 @@
 # 抖音热门音乐特征分析
 
-### TODO:
+**TODO:**
 
 wy:
 
@@ -15,7 +15,7 @@ wy:
 
 zzn：
 
-* 聚类算法以及后面的补充
+* 聚类算法以及后面的补充【Finshed】
 
 
 
@@ -29,17 +29,6 @@ qxy：
 
 
 其他的 你们看到能加的就加吧
-
-然后
-
-# 奥利给
-
-
-
-
-
-
-
 
 
 **项目地址： https://github.com/Cynyard999/NJUSEDouyinDataAnalysis**
@@ -74,10 +63,12 @@ qxy：
         - [3.4.2 数据归一化](#342-数据归一化)
     - [3.5 聚类算法](#35-聚类算法)
         - [3.5.1 K-Means聚类](#351-k-means聚类)
-        - [3.5.2 二分K-均值(bisecting K-means)](#352-二分k-均值bisecting-k-means)
-        - [3.5.3 MiniBatch k-Means](#353-minibatch-k-means)
+        - [3.5.2 MiniBatch k-Means](#352-minibatch-k-means)
+        - [3.5.3 评价聚类模型](#353-评价聚类模型)
+            - [3.5.3.1 轮廓系数](#3531-轮廓系数)
+            - [3.5.3.2 Calinski-Harabasz指数评价](#3532-calinski-harabasz指数评价)
     - [3.6 分类算法](#36-分类算法)
-        - [3.6.1 HMM算法](#361-hmm算法)
+        - [3.6.1 HMM算法(隐马尔可夫模型)](#361-hmm算法隐马尔可夫模型)
 - [4. 案例实践](#4-案例实践)
     - [4.1 数据爬取以及处理](#41-数据爬取以及处理)
     - [4.2 波形分析](#42-波形分析)
@@ -86,8 +77,8 @@ qxy：
         - [4.2.3 音乐音调变化图](#423-音乐音调变化图)
         - [4.2.4 音乐自相似矩阵图](#424-音乐自相似矩阵图)
     - [4.3 音乐特征分析聚类](#43-音乐特征分析聚类)
-        - [4.3.1 统计特征提取](#431-统计特征提取)
-        - [4.3.2 特征选择](#432-特征选择)
+        - [4.3.1 统计特征处理](#431-统计特征处理)
+        - [4.3.2 特征筛选](#432-特征筛选)
         - [4.3.3 归一化和降维处理](#433-归一化和降维处理)
         - [4.3.4 K-Means聚类](#434-k-means聚类)
             - [4.3.4.1 传统K-Means算法](#4341-传统k-means算法)
@@ -269,6 +260,20 @@ def split_music(begin, end, filepath, filename):
     - 峰度是四阶标准矩
     - ![](https://math.jianshu.com/math?formula=E%5B(%5Cfrac%7Bz_%7Bij%7D-%5Cmu%7D%7B%5Csigma%7D)%5E4%5D)
 
+```python
+# 	提取时域特征
+def TFeatures(x):
+    # 均值
+    mean = x.mean()
+    # 标准差
+    std = x.var() ** 0.5
+    # 偏态
+    skewness = ((x - mean) ** 3).mean() / std ** 3
+    # 峰态
+    kurtosis = ((x - mean) ** 4).mean() / std ** 4
+    return [mean, std, skewness, kurtosis]
+```
+
 #### 3.3.2.2 频域特征（spectrogram）
 
 频域（频率域）——自变量是频率,即横轴是频率,纵轴是该频率信号的幅度,也就是通常说的频谱图。频谱图描述了信号的频率结构及频率与该频率信号幅度的关系。
@@ -279,11 +284,29 @@ def split_music(begin, end, filepath, filename):
 
 ![](https://zzn-normal.oss-cn-beijing.aliyuncs.com/%E5%AD%A6%E4%B9%A0/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%9F%BA%E7%A1%80-%E6%8A%96%E9%9F%B3%E5%88%86%E6%9E%90/%E9%A2%91%E5%9F%9F%E7%89%B9%E5%BE%81.png)
 
+```python
+# 	提取频域特征
+def FFeatures(x):
+    x = np.array(x)
+    x = x.reshape(-1, 5).mean(1)
+    fft = np.fft.fft(x)
+    fft = fft[2: (fft.size // 2 + 1)]
+    fft = abs(fft)
+    power = fft.sum()
+    fft = np.array_split(fft, 10)
+    return [i.sum() / power for i in fft]
+```
+
 #### 3.3.2.3 差分
 
 通常情况下，我们接收到的所有信号都是非平稳信号，比如我们的语音信号就是典型的非平稳信号。而平稳信号指在不同时间得到的采样值的统计特性(比如期望、方差等)是相同的，非平稳信号则与之相反，其特性会随时间变化。在信号处理中，这个特性通常指频率。对于非平稳信号，由于频率特性会随时间变化，为了捕获这一短时时变特性，我们需要对信号进行时频分析。
 
 我们可以使用差分的方式来减轻数据之间的不规律波动，使其波动曲线更平稳，消除线性的趋势因素，得到平稳序列。通俗来说当间距相等时，用下一个数值，减去上一个数值 ，就叫“一阶差分”，做两次相同的动作，即再在一阶差分的基础上用后一个数值再减上一个数值一次，就叫“二阶差分"。
+
+```python
+data = np.array(x)
+diff = data[1:] - data[:-1]
+```
 
 #### 3.3.2.4 快速傅里叶变换（FFT）
 
@@ -293,19 +316,61 @@ def split_music(begin, end, filepath, filename):
 
 FFT（Fast Fourier Transformation），中文名快速傅里叶变换，是离散傅氏变换的快速算法，它是根据离散傅氏变换的奇、偶、虚、实等特性，对离散傅立叶变换的算法进行改进获得的。
 
+```python
+fft = np.fft.fft(x)
+fft = fft[2: (fft.size // 2 + 1)]
+fft = abs(fft)
+power = fft.sum()
+fft = np.array_split(fft, 10)
+```
+
 #### 3.3.2.5 平滑滤波（加窗）
 
-FFT提供了观察信号的新视角，但是FFT也有各种限制，可通过加窗增加信号的清晰度。使用FFT分析信号的频率成分时，分析的是有限的数据集合。 FFT认为波形是一组有限数据的集合，一个连续的波形是由若干段小波形组成的。 对于FFT而言，时域和频域都是环形的拓扑结构。时间上，波形的前后两个端点是相连的。 如测量的信号是周期信号，采集时间内刚好有整数个周期，那么FFT的上述假设合理。
+`FFT`提供了观察信号的新视角，但是FFT也有各种限制，可通过加窗增加信号的清晰度。使用`FFT`分析信号的频率成分时，分析的是有限的数据集合。 `FFT`认为波形是一组有限数据的集合，一个连续的波形是由若干段小波形组成的。 对于`FFT`而言，时域和频域都是环形的拓扑结构。时间上，波形的前后两个端点是相连的。 如测量的信号是周期信号，采集时间内刚好有整数个周期，那么`FFT`的上述假设合理。
 
 平滑，也可叫滤波，或者合在一起叫平滑滤波，平滑滤波是低频增强的空间域滤波技术。它的目的有两类：一类是模糊；另一类是消除噪音。空间域的平滑滤波一般采用简单平均法进行，就是求邻近像元点的平均亮度值。邻域的大小与平滑的效果直接相关，邻域越大平滑的效果越好，但邻域过大，平滑会使边缘信息损失的越大，从而使输出的图像变得模糊，因此需合理选择邻域的大小。
 
 我们主要通过平滑窗的选用来降低音频信号的噪声，并且显示音频信号在不同时间尺度上的特征值表现。
 
+```python
+# 长度为1
+data = x
+# 长度为10
+data = x.reshape(-1, 10).mean(1)
+# 长度为100
+data = x.reshape(-1, 100).mean(1)
+# 长度为1000
+data = x.reshape(-1, 1000).mean(1)
+```
+
 ## 3.4 数据降维及归一化
 
 ### 3.4.1 PCA主成分分析
 
+在多元统计分析中，主成分分析（英语：Principal components analysis，PCA）是一种统计分析、简化数据集的方法。它利用正交变换来对一系列可能相关的变量的观测值进行线性变换，从而投影为一系列线性不相关变量的值，这些不相关变量称为主成分（Principal Components）。具体地，主成分可以看做一个线性方程，其包含一系列线性系数来指示投影方向。`PCA`对原始数据的正则化或预处理敏感（相对缩放）。
+
+主成分分析经常用于减少数据集的维数，同时保留数据集当中对方差贡献最大的特征。这是通过保留低维主成分，忽略高维主成分做到的。这样低维成分往往能够保留住数据的最重要部分。
+
+```python
+from sklearn.decomposition import PCA
+model_pca = PCA(n_components=2).fit(fvs)
+fvs = model_pca.transform(fvs)
+```
+
 ### 3.4.2 数据归一化
+
+数据的标准化（normalization）是将数据按比例缩放，使之落入一个小的特定区间。在某些比较和评价的指标处理中经常会用到，去除数据的单位限制，将其转化为无量纲的纯数值，便于不同单位或量级的指标能够进行比较和加权。
+
+目前数据标准化方法有多种，归结起来可以分为直线型方法(如极值法、标准差法)、折线型方法(如三折线法)、曲线型方法(如半正态性分布)。不同的标准化方法，对系统的评价结果会产生不同的影响，然而不幸的是，在数据标准化方法的选择上，还没有通用的法则可以遵循。其中最典型的就是数据的归一化处理，即将数据统一映射到[0,1]区间上。
+
+而我们为了特征数据的可视化效果，选用了`StandardScaler`均值-标准差归一化，保证均值为零标准差为1，会有大于0的情况。(注：所以处理后的数据区间可能会大于一)
+
+```python
+from sklearn.preprocessing import StandardScaler
+scaler = StandardScaler()
+scaler.fit(fvs)
+fvs = scaler.transform(fvs)
+```
 
 ## 3.5 聚类算法
 
@@ -315,42 +380,168 @@ FFT提供了观察信号的新视角，但是FFT也有各种限制，可通过�
 
 ### 3.5.1 K-Means聚类
 
-K-Means聚类算法属于最基本的划分式聚类方法，需要事先指定簇类的数目或者聚类中心，通过反复迭代，直至最后达到"簇内的点足够近，簇间的点足够远"的目标。基于原型的、划分的距离技术，它试图发现用户指定个数(K)的簇。
+`K-Means`聚类算法属于最基本的划分式聚类方法，需要事先指定簇类的数目或者聚类中心，通过反复迭代，直至最后达到"簇内的点足够近，簇间的点足够远"的目标。基于原型的、划分的距离技术，它试图发现用户指定个数(K)的簇。
 
 算法原理：
-```
-选择K个点作为初始质心  
+>选择K个点作为初始质心  
 repeat  
     将每个点指派到最近的质心，形成K个簇  
     重新计算每个簇的质心  
 until 簇不发生变化或达到最大迭代次数  
-```
+
 
 特点：
 - 需要提前确定k值
 - 对初始质心点敏感
 - 对异常数据敏感
 
-k均值算法非常简单且使用广泛，但是其也有一些缺陷：
-1. K值需要预先给定，属于预先知识，很多情况下K值的估计是非常困难的，对于像计算全部微信用户的交往圈这样的场景就完全的没办法用K-Means进行。对于可以确定K值不会太大但不明确精确的K值的场景，可以进行迭代运算，然后找出Cost Function最小时所对应的K值，这个值往往能较好的描述有多少个簇类。
-2. K-Means算法对初始选取的聚类中心点是敏感的，不同的随机种子点得到的聚类结果完全不同
-3. K均值算法并不是很所有的数据类型。它不能处理非球形簇、不同尺寸和不同密度的簇，银冠指定足够大的簇的个数是他通常可以发现纯子簇。
-4. 对离群点的数据进行聚类时，K均值也有问题，这种情况下，离群点检测和删除有很大的帮助。
+```python
+from sklearn.cluster import KMeans
+# 实例化k-means分类器，设置不同的k值，并计算评估系数
+clf = KMeans(n_clusters=8, init='k-means++', n_init=10, max_iter=300, tol=0.0001,   
+         precompute_distances='auto', verbose=0, random_state=None,  
+         copy_x=True, n_jobs=None, algorithm='auto')
+y_pred = clf.fit_predict(X)
+```
 
-### 3.5.2 二分K-均值(bisecting K-means)
+`K-Means`算法非常简单且使用广泛，但是其也有一些缺陷：
+1. `k`值需要预先给定，属于预先知识，很多情况下`k`值的估计是非常困难的，对于像计算全部微信用户的交往圈这样的场景就完全的没办法用`K-Means`进行。对于可以确定K值不会太大但不明确精确的K值的场景，可以进行迭代运算，然后找出`Cost Function`最小时所对应的K值，这个值往往能较好的描述有多少个簇类。
+2. `K-Means`算法对初始选取的聚类中心点是敏感的，不同的随机种子点得到的聚类结果完全不同
+3. `K-Means`算法并不是很所有的数据类型。它不能处理非球形簇、不同尺寸和不同密度的簇，银冠指定足够大的簇的个数是他通常可以发现纯子簇。
+4. 对离群点的数据进行聚类时，`K-Means`也有问题，这种情况下，离群点检测和删除有很大的帮助。
 
-为了克服K-Means算法收敛于局部最小值的问题，优化出了二分k-Means算法：一种度量聚类效果的指标是SSE(Sum of Squared Error)，他表示聚类后的簇离该簇的聚类中心的平方和，SSE越小，表示聚类效果越好。 bi-kmeans是针对kmeans算法会陷入局部最优的缺陷进行的改进算法。该算法基于SSE最小化的原理，首先将所有的数据点视为一个簇，然后将该簇一分为二，之后选择其中一个簇继续进行划分，选择哪一个簇进行划分取决于对其划分是否能最大程度的降低SSE的值。
+### 3.5.2 MiniBatch k-Means
 
-### 3.5.3 MiniBatch k-Means
+`MiniBatchKMeans`是`KMeans`算法的变体，该算法使用小型批处理来缩短计算时间，同时仍在尝试优化相同的目标函数。小型批处理是输入数据的子集，在每个训练迭代中随机采样。这些小型批处理大大减少了收敛到本地解决方案所需的计算量。与其他减少 `k-means` 收敛时间的算法相比，小批 `k-means` 产生的结果通常只比标准算法稍差。
 
-在原始的K-means算法中，每一次的划分所有的样本都要参与运算，如果数据量非常大的话，这个时间是非常高的，因此有了一种分批处理的改进算法。
-使用Mini Batch（分批处理）的方法对数据点之间的距离进行计算。
-Mini Batch的好处：不必使用所有的数据样本，而是从不同类别的样本中抽取一部分样本来代表各自类型进行计算。n 由于计算样本量少，所以会相应的减少运行时间n 但另一方面抽样也必然会带来准确度的下降。
+该算法在两个主要步骤之间进行检测，类似于 `k-means` 。在第一步中，从数据集中随机抽取样本，以形成小型批处理。然后，这些被分配给最近的质心。在第二步中，重心更新。与 `k-means` 不同，这是基于每个样本完成的。对于小批量中的每个样本，通过采集样本的流平均值和分配给该质心的所有先前样本来更新分配的质心。这具有随着时间的推移降低质心变化速率的效果。执行这些步骤，直到达到收敛或预定的迭代次数。
+
+```python
+from sklearn.cluster import MiniBatchKMeans
+# 实例化k-means分类器，设置k值，随机状态
+clf = MiniBatchKMeans(n_clusters=k, batch_size = 400, precompute_distances='auto', verbose=0, random_state=None,  
+         copy_x=True, n_jobs=None, algorithm='auto')
+y_pred = clf.fit_predict(X)
+```
+
+### 3.5.3 评价聚类模型
+
+#### 3.5.3.1 轮廓系数
+
+当文本类别未知时，可以选择轮廓系数作为聚类性能的评估指标。轮廓系数取值范围为[-1,1]，取值越接近1则说明聚类性能越好，相反，取值越接近-1则说明聚类性能越差。
+
+```python
+from sklearn.metrics import silhouette_score
+import matplotlib.pyplot as plt
+silhouettescore=[]
+for i in range(2,15):
+    kmeans=KMeans(n_clusters=i,random_state=123).fit(iris_data)
+    score=silhouette_score(iris_data,kmeans.labels_)
+    silhouettescore.append(score)
+plt.figure(figsize=(10,6))
+plt.plot(range(2,15),silhouettescore,linewidth=1.5,linestyle='-')
+plt.show()
+```
+
+轮廓系数的优点
+
+>轮廓系数为-1时表示聚类结果不好，为+1时表示簇内实例之间紧凑，为0时表示有簇重叠。轮廓系数越大，表示簇内实例之间紧凑，簇间距离大，这正是聚类的标准概念。
+
+轮廓系数的缺点
+
+>对于簇结构为凸的数据轮廓系数值高，而对于簇结构非凸需要使用DBSCAN进行聚类的数据，轮廓系数值低，因此，轮廓系数不应该用来评估不同聚类算法之间的优劣，比如Kmeans聚类结果与DBSCAN聚类结果之间的比较。
+
+#### 3.5.3.2 Calinski-Harabasz指数评价
+
+CH（Calinski-Harabasz）指标通过计算总体的相似度，簇间平均相似度或簇内平均相似度来评价聚类质量。评价聚类效果的高低通常使用聚类的有效性指标，所以目前的检验聚类的有效性指标主要是通过簇间距离和簇内距离来衡量。
+
+```python
+from sklearn.metrics import calinski_harabaz_score
+for i in range(2,7):
+    kmeans=KMeans(n_clusters=i,random_state=123).fit(iris_data)
+    score=calinski_harabaz_score(iris_data,kmeans.labels_)
+    print("聚类%d簇的calinski_harabaz分数为：%f" %(i,score))
+```
+
+CH指数的优点
+>当簇类密集且簇间分离较好时，Caliniski-Harabaz分数越高，聚类性能越好。
+计算速度快。
+
+CH指数的缺点
+
+>凸簇的Caliniski-Harabaz指数比其他类型的簇高，比如通过DBSCAN获得的基于密度的簇。
 
 
 ## 3.6 分类算法
 
-### 3.6.1 HMM算法
+>分类是一个有监督的学习过程，目标数据库中有哪些类别是已知的，分类过程需要做的就是把每一条记录归到对应的类别之中。
+
+### 3.6.1 HMM算法(隐马尔可夫模型)
+
+隐马尔可夫模型非常擅长对时间序列数据进行建模。由于音乐音频文件是时间序列信号，我们希望HMM能够满足我们的需求，给我们一个准确的分类。隐马尔可夫模型是表示观察序列的概率分布的模型。我们假设输出是由隐藏状态生成的。
+
+**数据集**：我们将使用Marsyas提供的机器学习数据集，这是一个名为GTZAN的开源软件。它是每30秒长的1000个音轨的集合。代表10种类型，每种包含100个音轨。所有音轨都是.au格式的22050Hz单声道16位音频文件。
+
+**训练特征**：我们需要找到一种简洁地表示歌曲波形的方法。Mel频率倒谱系数（MFCC）是一种很好的方法。MFCC获取信号的功率谱（power spectrum），然后使用Filter banks和离散余弦变换的组合来提取特征。
+
+通过包装hmmlearn库提供的模型，我们构建了一个处理HMM训练和预测的Python类。
+```python
+from hmmlearn import hmm
+
+class HMMTrainer(object):
+    def __init__(self, model_name='GaussianHMM', n_components=4, cov_type='diag', n_iter=1000):
+    self.model_name = model_name
+    self.n_components = n_components
+    self.cov_type = cov_type
+    self.n_iter = n_iter
+    self.models = []
+    if self.model_name == 'GaussianHMM':
+    self.model = hmm.GaussianHMM(n_components=self.n_components, covariance_type=self.cov_type,n_iter=self.n_iter)
+    else:
+    raise TypeError('Invalid model type') 
+    def train(self, X):
+    np.seterr(all='ignore')
+    self.models.append(self.model.fit(X))
+    # Run the model on input data
+    def get_score(self, input_data):
+    return self.model.score(input_data)
+```
+
+为了训练隐马尔可夫模型，我们遍历数据集中的子文件夹，我们迭代子文件夹中的歌曲以提取特征并将其附加到变量。
+```python
+def evaluateHHM():
+    hmm_models = []
+    input_folder = samplesPath
+    for dirname in os.listdir(input_folder):
+        # 得到音乐类型
+        subfolder = os.path.join(input_folder, dirname)
+        if not os.path.isdir(subfolder):
+            continue
+        # 提取音乐类型
+        label = subfolder[subfolder.rfind('/') + 1:]
+        X = np.array([])
+        y_words = []
+        # 遍历该音乐类型文件夹下的所有音乐
+        print("读取" + label + "类型样本数据...")
+        for filename in [x for x in os.listdir(subfolder) if x.endswith('.wav')][:-1]:
+            filepath = os.path.join(subfolder, filename)
+            sampling_freq, audio = wavfile.read(filepath)
+            # 得到mfcc特征
+            mfcc_features = mfcc(audio, sampling_freq)
+            if len(X) == 0:
+                X = mfcc_features
+            else:
+                X = np.append(X, mfcc_features, axis=0)
+            # Append the label
+            y_words.append(label)
+        hmm_trainer = HMMTrainer(n_components=4)
+        print(label + "类型数据读取完成，" + "开始训练...")
+        hmm_trainer.train(X)
+        print("训练结束!")
+        hmm_models.append((hmm_trainer, label))
+        hmm_trainer = None
+    return hmm_models
+```
 
 
 
@@ -427,32 +618,30 @@ Mini Batch的好处：不必使用所有的数据样本，而是从不同类别�
 
 > ​	在之前的波形特征提取部分，我们研究了不同音乐间的歌的**波形结构**，但我们发现即使同一名歌手演唱的同一首歌曲的不同段落音频波形结构之间的差异也很大，而我们想要探讨这些抖音热歌之间的共同点以及与非热门歌曲之间的区别，为此我们想到了提取音乐的统计特征并进行**聚类**来探讨他们之间的**关联性**。
 
-### 4.3.1 统计特征提取
+### 4.3.1 统计特征处理
 
-我们首先需要做的是波形的特征提取，我们从原始的WAV文件中提取统计要素，我们人为地选取了42个音频特征值：
-
-- **歌曲波形的统计矩**，包括*均值*、*标准差*、*偏态*和*峰态*，同时，我们通过平滑窗(递增平滑，长度分别为1,10,100,1000)来获取这些特征在不同时间尺度上的表现；
-- 为了体现信号的短时变化，我们可以计算一下**波形一阶差分幅度的统计矩**，同样也通过平滑窗来获取这些特征(*均值*、*标准差*、*偏态*和*峰态*)在不同时间尺度上的表现；
-- 最后，我们计算一下**波形的频域特征**，这里我们只计算歌曲在不同*频段*(将整个频段均分为10份)的能量占比，不过直接对歌曲的波形数据作快速傅里叶变换的话其计算量过于庞大了，因此先让波形数据通过长度为5的平滑窗再对其作快速傅里叶变换。
-
-最终得出如下42个特征值：
-
-![42个特征值示例](https://zzn-normal.oss-cn-beijing.aliyuncs.com/%E5%AD%A6%E4%B9%A0/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%9F%BA%E7%A1%80-%E6%8A%96%E9%9F%B3%E5%88%86%E6%9E%90/42%E7%89%B9%E5%BE%81%E5%80%BC%E7%A4%BA%E4%BE%8B.png)
+根据我们之前进行的音频特征提取，我们可以得到音频的波形结构的时域频域特征，通过相应的通过一阶差分和平滑窗(递增平滑，长度分别为1,10,100,1000)来获取这些特征在不同时间尺度上的表现，以及对歌曲在不同评断的能量占比进行快速傅里叶变化，最终得出如下42个特征值：
 
 ```python
+4*4+4*4+10=42
+# 在四个平滑窗下的16个特征值
 amp1mean amp1std amp1skew amp1kurt
-amp1dmean amp1dstd amp1dskew amp1dkurt
 amp10mean amp10std amp10skew amp10kurt
-amp10dmean amp10dstd amp10dskew amp10dkurt
 amp100mean amp100std amp100skew amp100kurt
-amp100dmean amp100dstd amp100dskew amp100dkurt
 amp1000mean amp1000std amp1000skew amp1000kurt
+# 一阶差分幅度下在四个平滑窗下的16个特征值
+amp1dmean amp1dstd amp1dskew amp1dkurt
+amp10dmean amp10dstd amp10dskew amp10dkurt
+amp100dmean amp100dstd amp100dskew amp100dkurt
 amp1000dmean amp1000dstd amp1000dskew amp1000dkurt
+# 十个频段的频域特征
 power1 power2 power3 power4 power5
 power6 power7 power8 power9 power10
 ```
 
-### 4.3.2 特征选择
+![42个特征值示例](https://zzn-normal.oss-cn-beijing.aliyuncs.com/%E5%AD%A6%E4%B9%A0/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%9F%BA%E7%A1%80-%E6%8A%96%E9%9F%B3%E5%88%86%E6%9E%90/42%E7%89%B9%E5%BE%81%E5%80%BC%E7%A4%BA%E4%BE%8B.png)
+
+### 4.3.2 特征筛选
 
 然而在使用这些特征值的过程中我们发现，由于这些特征值是人为提取的，所以并不能很好地表现出歌曲特征，并且这些特征之间的相关系数是不为0的，也就是说存在冗余特征，因此我们需要对特征值进行筛选。
 
@@ -539,9 +728,17 @@ class 6 [数量：76]：['来吧开整', 'waiting for love', '你长这样谁要
 
 ## 4.4 音乐分类
 
+我们使用Marsyas提供的机器学习数据集，构建了一个利用隐马尔可夫模型的训练、预测音乐类型的分类器。
+
+训练过程：
+
+![](https://zzn-normal.oss-cn-beijing.aliyuncs.com/%E5%AD%A6%E4%B9%A0/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%9F%BA%E7%A1%80-%E6%8A%96%E9%9F%B3%E5%88%86%E6%9E%90/HMM%E8%AE%AD%E7%BB%83.png)
+
 音乐分类结果：
 
 ![](https://zzn-normal.oss-cn-beijing.aliyuncs.com/%E5%AD%A6%E4%B9%A0/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%9F%BA%E7%A1%80-%E6%8A%96%E9%9F%B3%E5%88%86%E6%9E%90/%E9%9F%B3%E4%B9%90%E5%88%86%E7%B1%BB.png)
+
+隐马尔可夫模型的性能相对平均，显然，还有很大的改进空间。实际上，隐马尔可夫模型对于时间序列数据是可解释的和强大的，但是，它们需要大量的微调（隐藏状态的数量，输入特征.等）。最好尝试其他方法来对音乐类型进行分类，比如循环神经网络(LSTM)。
 
 ## 4.5 midi文件生成
 
@@ -558,17 +755,23 @@ class 6 [数量：76]：['来吧开整', 'waiting for love', '你长这样谁要
 
 # 6. 反思与不足
 
-只研究了声学三要素相关的知识，没有研究音乐三要素（旋律，和声，节奏）相关的内容，并没有直接的midi文件，没有生成音乐
+只研究了声学三要素相关的知识，没有研究音乐三要素（旋律，和声，节奏）相关的内容，并没有直接的midi文件，没有生成音乐。
+
+选取的聚类模型还有较大的评估优化空间，对于聚类算法以及参数的选用还可以更加细致地进行调参。
+
+准备的训练数据量较少，不太能够支撑完整模型的训练，训练后的模型召回率和精确率都比较低。
 
 # 7. 参考文献
 
-[R语言中的遗传算法](http://blog.fens.me/algorithm-ga-r/)
+[TORCHAUDIO TUTORIAL](https://pytorch.org/tutorials/beginner/audio_preprocessing_tutorial.html)
 
 [sklearn聚类算法官网](https://scikit-learn.org/stable/modules/clustering.html#)
 
 [音乐收藏分析](https://www.christianpeccei.com/musicmap/)
 
- [基于神经网络的音乐流派分类](https://medium.com/@navdeepsingh_2336/identifying-the-genre-of-a-song-with-neural-networks-851db89c42f0)
+[基于神经网络的音乐流派分类](https://medium.com/@navdeepsingh_2336/identifying-the-genre-of-a-song-with-neural-networks-851db89c42f0)
+
+[使用隐马尔可夫模型进行音乐流派分类](https://www.toutiao.com/a6664179482661749256/)
 
 
 
