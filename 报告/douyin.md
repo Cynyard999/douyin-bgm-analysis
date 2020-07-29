@@ -49,9 +49,9 @@ qxy：
             - [3.3.1.1 波形提取](#3311-波形提取)
             - [3.3.1.2 音调提取](#3312-音调提取)
             - [3.3.1.3 过零率](#3313-过零率)
-            - [3.3.1.4 光谱质心变化](#3314-光谱质心变化)
-            - [3.3.1.5 光谱衰减](#3315-光谱衰减)
-            - [3.3.1.6 梅尔频率倒谱系数](#3316-梅尔频率倒谱系数)
+            - [3.3.1.4 频谱中心变化](#3314-频谱中心变化)
+            - [3.3.1.5 梅尔频率倒谱系数](#3315-梅尔频率倒谱系数)
+        - [【这里放张图片】](#这里放张图片)
         - [3.3.2 统计特征提取](#332-统计特征提取)
             - [3.3.2.1 时域特征（waveform）](#3321-时域特征waveform)
             - [3.3.2.2 频域特征（spectrogram）](#3322-频域特征spectrogram)
@@ -72,7 +72,7 @@ qxy：
 - [4. 案例实践](#4-案例实践)
     - [4.1 数据爬取以及处理](#41-数据爬取以及处理)
     - [4.2 波形分析](#42-波形分析)
-        - [4.2.1 音乐频谱图](#421-音乐频谱图)
+        - [4.2.1 音乐波形图](#421-音乐波形图)
         - [4.2.2 音乐语谱图](#422-音乐语谱图)
         - [4.2.3 音乐音调变化图](#423-音乐音调变化图)
         - [4.2.4 音乐自相似矩阵图](#424-音乐自相似矩阵图)
@@ -211,8 +211,25 @@ def split_music(begin, end, filepath, filename):
     return temp_path
 ```
 
-
 ### 3.2.2 midi生成
+
+​	由于我们要获取尽可能更多的纯音乐信息并设法生成我们的wav音乐，所以我们要从wav文件得到其midi文件的映射，从而来研究音乐的音调变化
+
+```python
+import os
+import subprocess
+import time
+dir='..\\wav\\'
+filename= os.listdir(dir)
+exe='wav2midi.exe'
+print(filename)
+for file in filename:
+    p = subprocess.Popen(exe+' '+dir+file)
+    time.sleep(10)
+    p.kill()
+```
+
+​	利用wave to midi映射程序，得到我们想要的midi文件（该文件在降噪处理后，利用傅里叶变换获取频率信息，再根据频率对应的音高得到音调）
 
 ## 3.3 音频特征
 
@@ -224,27 +241,141 @@ def split_music(begin, end, filepath, filename):
 
 #### 3.3.1.1 波形提取
 
+提取文件中所有的帧的信息。若文件为单通道，则直接将所有帧形成一维矩阵，若为双通道，则提取左声道的帧形成一维矩阵。最后将一维矩阵归一化，再将离散的点连线作图。
+
+```python
+f=wave.open(filepath+file,'rb')#打开文件
+params = f.getparams()
+nchannels, sampwidth, framerate, nframes = params[:4]
+strData = f.readframes(nframes)#读取音频，字符串格式
+waveData = np.fromstring(strData,dtype=np.int16)#将字符串转化为int
+waveData = waveData*1.0/(max(abs(waveData)))#wave幅值归一化
+waveData = np.reshape(waveData,[nframes,nchannels])
+# plot the wave
+time = np.arange(0,nframes)*(1.0 / framerate)
+plt.subplot(3,1,1)
+plt.plot(time,waveData[:,0])
+plt.xlabel("Time(s)")
+plt.ylabel("Amplitude")
+plt.title("Double channel wavedata")
+plt.grid('on')#标尺，on：有，off:无。
+plt.subplot(3,1,3)
+plt.plot(time,waveData[:,1])
+plt.xlabel("Time(s)")
+plt.ylabel("Amplitude")
+plt.title("Double channel wavedata")
+plt.grid('on')#标尺，on：有，off:无。
+plt.savefig('..\\波形图\\' + file + '.png')
+plt.close()
+print(file, "波形图已保存")
+```
+
+
+
 #### 3.3.1.2 音调提取
+
+利用傅里叶变换，将波形拆分成多个正弦曲线。不同的正弦曲线，代表的不同音调的波形，所以我们无法获取绝对应高，只能比较时间维度上，相对的音调变化。对音乐帧进行分段，8000个帧为一小段，进行快速傅里叶变换，并对分解的曲线进行对应其响度上的加权，最终获得该小段上的相对音高。最终将这些音高做成曲线。
+
+```python
+def pitch(list):
+    ans=0
+    for i in range(len(list)):
+        ans+=(i+1)*abs(list[i])
+    ans=ans/len(list)
+    return  ans
+f = wave.open(filepath+file, 'rb')#读取文件
+params = f.getparams()
+nchannels, sampwidth, framerate, nframes = params[:4]
+time = nframes / framerate
+strData = f.readframes(nframes)  # 读取音频，字符串格式
+waveData = np.fromstring(strData, dtype=np.int16)  # 将字符串转化为int
+data = waveData[0::2]
+interval = 8000
+extra = len(data) % interval
+data = data[0:len(data) - extra]
+anslist = []
+for i in range(0, len(data), interval):
+    list = data[i:i + interval]
+    list = np.fft.rfft(list)
+    anslist.append(int(pitch(list)))
+```
+
+
 
 #### 3.3.1.3 过零率
 
-#### 3.3.1.4 光谱质心变化
+> 过零率（Zero Crossing Rate，ZCR）是指在每帧中，语音信号通过零点（从正变为负或从负变为正）的次数。 这个特征已在语音识别和音乐信息检索领域得到广泛使用，是对敲击的声音的分类的关键特征。对于一些卡点的bgm，其过零率会呈现更高的水平，即节奏性越强
 
-#### 3.3.1.5 光谱衰减
+代码如下
 
-#### 3.3.1.6 梅尔频率倒谱系数
+```python
+def crossingRate(filePath):
+    x, sr = librosa.load(filePath)
+    n0 = 9000
+    n1 = 9100
+    plt.figure(figsize=(14, 5))
+    plt.plot(x[n0:n1])
+    plt.grid()
+    zero_crossings = librosa.zero_crossings(x[n0:n1], pad=False)
+    return sum(zero_crossings)
+```
+
+#### 3.3.1.4 频谱中心变化
+
+> 它指示声音的“质心”位于何处，并计算为声音中存在的频率的加权平均值。如果有两首歌曲，一首来自布鲁斯类型，另一首属于金属类型。从音乐风格来看，金属歌曲在接近尾声的频率会更高。因此，金属歌曲的光谱质心，相比于布鲁斯歌曲，将会更加朝向它的末端。我们通过提取音乐中的质心变化，就能知道这首歌在歌曲的那个部分达到高潮水平
+
+代码如下
+
+```python
+def centroid(filePath,fileName):
+    x, sr = librosa.load(filePath)
+    spectral_centroids = librosa.feature.spectral_centroid(x, sr=sr)[0]
+    print(spectral_centroids)
+    # spectral_centroids.shape(775,)
+    frames = range(len(spectral_centroids))
+    t = librosa.frames_to_time(frames)
+    plt.figure(figsize=(20, 5))
+    librosa.display.waveplot(x, sr=sr, alpha=0.4)
+    plt.plot(t, normalize(spectral_centroids), color='r')
+    # plt.savefig(source_path+'/'+fileName.split('.')[0])
+    plt.show()
+```
+
+#### 3.3.1.5 梅尔频率倒谱系数
+
+> 信号的梅尔频率倒谱系数(MFCC)是一个通常由10-20个特征构成的集合，可简明地描述频谱包络的总体形状，这些形状决定了发出的声音是怎样的，如果能准确辨别出这些形状，就可以得到一种准确的**音位**
+
+> 梅尔频率分析基于人类听觉感知实验。实验观测发现人耳就像一个滤波器组一样，它只关注某些特定的频率分量（人的听觉对频率是有选择性的）。而梅尔频率倒谱系数（Mel Frequency Cepstrum Coefficient, MFCC）考虑到了人类的听觉特征，先将线性频谱映射到基于听觉感知的Mel非线性频谱中，然后转换到倒谱上。
+
+从普通频率转换到Mel非线性频率的公式为: $mel(f) = 2595*lg(1+f/700)$
+
+它可以将不统一的频率转化为统一的频率，也就是统一的滤波器组。
+
+我们将频谱通过一组Mel滤波器就得到Mel频谱。公式表述就是:$lg X[k] = lg(Mel-Spectrum)$
+
+​	1）取对数：$lg X[k] = lg H[k] + lg E[k]。$
+
+​	2）进行逆变换：$x[k] = h[k] + e[k]$。
+
+在Mel频谱上面获得的倒谱系数h[k]就称为Mel频率倒谱系数，简称MFCC。总的过程如下图：
+
+### 【这里放张图片】
+
+
 
 ### 3.3.2 统计特征提取
 
 #### 3.3.2.1 时域特征（waveform）
 
-**含量纲的时域特征**
+> **含量纲的时域特征**
+>
+> 音频信号中含量纲的时域特征，常用的有十个，其中包括最大值(maximum)、最小值(minimum)、极差(range)、均值(mean)、中位数(media)、众数(mode)、标准差(standard deviation)、均方根值(root mean square/rms)、均方值(mean square/ms)、k阶中心/原点矩。
+>
 
-音频信号中含量纲的时域特征，常用的有十个，其中包括最大值(maximum)、最小值(minimum)、极差(range)、均值(mean)、中位数(media)、众数(mode)、标准差(standard deviation)、均方根值(root mean square/rms)、均方值(mean square/ms)、k阶中心/原点矩。
-
-**无量纲的时域特征**
-
-音频信号中无量纲的时域特征，分别为偏度(skewness)，峰度(kurtosis)，峰度因子(kurtosis factor)、波形因子(waveform factor)、脉冲因子(pulse factor)、裕度因子(margin factor)。
+> **无量纲的时域特征**
+>
+> 音频信号中无量纲的时域特征，分别为偏度(skewness)，峰度(kurtosis)，峰度因子(kurtosis factor)、波形因子(waveform factor)、脉冲因子(pulse factor)、裕度因子(margin factor)。
+>
 
 本次作业中我们选用其中的*均值*、*标准差*、*偏度*和*峰度*四项时域特征：
 - 均值：
@@ -555,7 +686,7 @@ def evaluateHHM():
 
 ## 4.2 波形分析
 
-### 4.2.1 音乐频谱图 
+### 4.2.1 音乐波形图 
 
 将mp3文件转成wav文件后，提取文件中所有的帧的信息。若文件为单通道，则直接将所有帧形成一维矩阵，若为双通道，则提取左声道的帧形成一维矩阵。最后将一维矩阵归一化，再将离散的点连线作图。任取十首，示范如下：
 
@@ -570,12 +701,13 @@ def evaluateHHM():
     <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%A2%91%E8%B0%B1%E5%9B%BE/%E6%83%B3%E8%A7%81%E4%BD%A0%E6%83%B3%E8%A7%81%E4%BD%A0%E6%83%B3%E8%A7%81%E4%BD%A0.wav.png" width="400"/ >     
     <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%A2%91%E8%B0%B1%E5%9B%BE/%E7%88%B1%EF%BC%8C%E5%AD%98%E5%9C%A8.wav.png" width="400"/> 
 </figure>
+![](https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E6%B3%A2%E5%BD%A2.png)
 
 ### 4.2.2 音乐语谱图
 
 将音乐频谱图中得到的一维矩阵，将该矩阵形成谱图。任取4首效果如下:
 
-图例：
+**图例**
 
 <figure class="half">     
     <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E8%AF%AD%E8%B0%B1%E5%9B%BE/%E4%BD%A0%E5%95%8A%E4%BD%A0%E5%95%8A.wav.png" width="400"/ >     
@@ -586,6 +718,7 @@ def evaluateHHM():
     <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E8%AF%AD%E8%B0%B1%E5%9B%BE/%E5%BE%AE%E5%BE%AE.wav.png" width="400"/ >     
     <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E8%AF%AD%E8%B0%B1%E5%9B%BE/%E7%88%B1%EF%BC%8C%E5%AD%98%E5%9C%A8.wav.png" width="400"/> 
 </figure>
+![](https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E8%AF%AD%E8%B0%B1.png)
 
 ### 4.2.3 音乐音调变化图
 
@@ -594,18 +727,22 @@ def evaluateHHM():
 **图例**
 
 <figure class="half">     
-    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E8%B0%83%E5%9B%BE/DancingWithYourGhost.wav.png" width="400"/ >     
-    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E8%B0%83%E5%9B%BE/%E4%B8%80%E5%8D%83%E9%9B%B6%E4%B8%80%E6%AC%A1%E6%88%91%E7%88%B1%E4%BD%A0.wav.png" width="400"/> 
+    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E8%B0%83%E5%9B%BE/Crying%20Over%20You.wav.png" width="400"/ >     
+    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E8%B0%83%E5%9B%BE/DancingWithYourGhost.wav.png"width="400"/> 
 </figure>
 
 <figure class="half">     
-    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E8%B0%83%E5%9B%BE/%E5%8F%AB%E6%88%91baby.wav.png" width="400"/ >     
-    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E8%B0%83%E5%9B%BE/%E6%97%A7%E6%A2%A6%E4%B8%80%E5%9C%BA.wav.png" width="400"/> 
+    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E8%B0%83%E5%9B%BE/%E5%8F%AE%E5%8F%AE%E5%8F%AE.wav.png" width="400"/ >     
+    <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E8%B0%83%E5%9B%BE/%E6%88%91%E5%BF%83%E9%87%8C%E7%9A%84%E7%A7%98%E5%AF%86.wav.png" width="400"/> 
 </figure>
+
+![](https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E8%B0%83.png)
 
 ### 4.2.4 音乐自相似矩阵图
 
 读取midi文件,根据其音调信息生成谱图
+
+根据谱图对角线方块颜色的变化，我们可以看出音乐音调变化相似性，从自相似矩阵中，我们可以验证音乐本身所具有的节奏感，旋律感。
 
 **图例**
 
@@ -613,6 +750,7 @@ def evaluateHHM():
     <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E8%87%AA%E7%9B%B8%E4%BC%BC%E7%9F%A9%E9%98%B5/DancingWithYourGhost.mid.png" width="400"/ >     
     <img src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E8%87%AA%E7%9B%B8%E4%BC%BC%E7%9F%A9%E9%98%B5/%E4%BD%A0%E5%95%8A%E4%BD%A0%E5%95%8A.mid.png" width="400"/> 
 </figure>
+![](https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E8%87%AA%E7%9B%B8%E4%BC%BC.png)
 
 ## 4.3 音乐特征分析聚类
 
@@ -744,12 +882,42 @@ class 6 [数量：76]：['来吧开整', 'waiting for love', '你长这样谁要
 
 根据读取wav文件的帧，对其进行傅里叶变换获取音高信息，最终导入mid文件
 
-山妖原音乐
+​	**山妖原音乐**
+
+​	**下载链接：**
+
+https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E4%B9%90/%E5%B1%B1%E5%A6%96.wav
 
 <audio id="audio" controls="" preload="none"> <source  src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E4%B9%90/%E5%B1%B1%E5%A6%96.wav"> </audio>
-山妖mid文件音乐
+​	**山妖mid文件音乐**
+
+​	**下载链接：**
+
+https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E4%B9%90/%E5%B1%B1%E5%A6%96mp32mid.mp3
 
 <audio id="audio" controls="" preload="none"> <source  src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E9%9F%B3%E4%B9%90/%E5%B1%B1%E5%A6%96mp32mid.mp3"> </audio>
+
+根据不同的wav文件，我们综合其属性和特征，融合了属于自己的wav
+
+​	**wav融合**
+
+​	**下载链接：**
+
+https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E7%BB%9D%E6%B4%BB%E7%BB%88%E6%9E%81.wav
+
+<audio id="audio" controls="" preload="none"> <source  src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E7%BB%9D%E6%B4%BB%E7%BB%88%E6%9E%81.wav"> </audio>
+
+但是令人遗憾的是，这一曲子太过嘈杂，我们认为，这是因为在形成文件时，我们著重音乐波形和音调的变换，而忽略音乐本身的旋律性，缺少了节奏。因此我们通过midi映射，生成对应音调变化文件。
+
+ 	**最终音调**
+
+​	**下载链接：**
+
+https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E6%9C%80%E7%BB%88.mp3
+
+<audio id="audio" controls="" preload="none"> <source  src="https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%AD%A6%E5%A4%A7%E4%BD%9C%E4%B8%9A/%E6%9C%80%E7%BB%88.mp3"> </audio>
+
+这就是最终生成的音调变化，我们期望以该旋律为基础，加上适当旋律和和声，生成一首该项目的抖音BGM
 
 # 5. 结论
 
@@ -764,6 +932,10 @@ class 6 [数量：76]：['来吧开整', 'waiting for love', '你长这样谁要
 # 7. 参考文献
 
 [TORCHAUDIO TUTORIAL](https://pytorch.org/tutorials/beginner/audio_preprocessing_tutorial.html)
+
+[MFCC](https://blog.csdn.net/zouxy09/article/details/9156785/)
+
+[R语言中的遗传算法](http://blog.fens.me/algorithm-ga-r/)
 
 [sklearn聚类算法官网](https://scikit-learn.org/stable/modules/clustering.html#)
 
