@@ -132,21 +132,21 @@ def split_music(begin, end, filepath, filename):
 
 *均值*、*标准差*、*偏态*和*峰态*
 
-**3.3.1.6 音调提取**
+**3.3.1.2 音调提取**
 
-**3.3.1.2 过零率**
+**3.3.1.3 过零率**
 
-**3.3.1.3 光谱质心变化**
+**3.3.1.4 光谱质心变化**
 
-**3.3.1.4 光谱衰减**
+**3.3.1.5 光谱衰减**
 
-**3.3.1.5 梅尔频率倒谱系数**
+**3.3.1.6 梅尔频率倒谱系数**
 
 ### 3.3.2 谱图生成
 
-**3.3.2.1** **频谱图**
+**3.3.2.1** **时域特征**（waveform）
 
-**3.3.2.2** **语谱图** 
+**3.3.2.2** **频域特征** （spectrogram）
 
 ### 3.3.3 midi文件生成
 
@@ -442,6 +442,8 @@ class 9 [数量：61]：['爱出发', 'DJ原声', 'Planet', 'LA LA LAND', 'Moshi
 [R语言中的遗传算法](http://blog.fens.me/algorithm-ga-r/)
 
 [sklearn聚类算法官网](https://scikit-learn.org/stable/modules/clustering.html#)
+
+[音乐收藏分析](https://www.christianpeccei.com/musicmap/)
 
  [基于神经网络的音乐流派分类](https://medium.com/@navdeepsingh_2336/identifying-the-genre-of-a-song-with-neural-networks-851db89c42f0)
 
