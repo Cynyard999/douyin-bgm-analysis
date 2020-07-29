@@ -313,23 +313,78 @@ for i in range(0, len(data), interval):
 
 #### 3.3.1.3 过零率
 
-#### 3.3.1.4 光谱质心变化
+> 过零率（Zero Crossing Rate，ZCR）是指在每帧中，语音信号通过零点（从正变为负或从负变为正）的次数。 这个特征已在语音识别和音乐信息检索领域得到广泛使用，是对敲击的声音的分类的关键特征。对于一些卡点的bgm，其过零率会呈现更高的水平，即节奏性越强
 
-#### 3.3.1.5 光谱衰减
+代码如下
 
-#### 3.3.1.6 梅尔频率倒谱系数
+```python
+def crossingRate(filePath):
+    x, sr = librosa.load(filePath)
+    n0 = 9000
+    n1 = 9100
+    plt.figure(figsize=(14, 5))
+    plt.plot(x[n0:n1])
+    plt.grid()
+    zero_crossings = librosa.zero_crossings(x[n0:n1], pad=False)
+    return sum(zero_crossings)
+```
+
+#### 3.3.1.4 频谱中心变化
+
+> 它指示声音的“质心”位于何处，并计算为声音中存在的频率的加权平均值。如果有两首歌曲，一首来自布鲁斯类型，另一首属于金属类型。从音乐风格来看，金属歌曲在接近尾声的频率会更高。因此，金属歌曲的光谱质心，相比于布鲁斯歌曲，将会更加朝向它的末端。我们通过提取音乐中的质心变化，就能知道这首歌在歌曲的那个部分达到高潮水平
+
+代码如下
+
+```python
+def centroid(filePath,fileName):
+    x, sr = librosa.load(filePath)
+    spectral_centroids = librosa.feature.spectral_centroid(x, sr=sr)[0]
+    print(spectral_centroids)
+    # spectral_centroids.shape(775,)
+    frames = range(len(spectral_centroids))
+    t = librosa.frames_to_time(frames)
+    plt.figure(figsize=(20, 5))
+    librosa.display.waveplot(x, sr=sr, alpha=0.4)
+    plt.plot(t, normalize(spectral_centroids), color='r')
+    # plt.savefig(source_path+'/'+fileName.split('.')[0])
+    plt.show()
+```
+
+#### 3.3.1.5 梅尔频率倒谱系数
+
+> 信号的梅尔频率倒谱系数(MFCC)是一个通常由10-20个特征构成的集合，可简明地描述频谱包络的总体形状，这些形状决定了发出的声音是怎样的，如果能准确辨别出这些形状，就可以得到一种准确的**音位**
+
+> 梅尔频率分析基于人类听觉感知实验。实验观测发现人耳就像一个滤波器组一样，它只关注某些特定的频率分量（人的听觉对频率是有选择性的）。而梅尔频率倒谱系数（Mel Frequency Cepstrum Coefficient, MFCC）考虑到了人类的听觉特征，先将线性频谱映射到基于听觉感知的Mel非线性频谱中，然后转换到倒谱上。
+
+从普通频率转换到Mel非线性频率的公式为: $mel(f) = 2595*lg(1+f/700)$
+
+它可以将不统一的频率转化为统一的频率，也就是统一的滤波器组。
+
+我们将频谱通过一组Mel滤波器就得到Mel频谱。公式表述就是:$lg X[k] = lg(Mel-Spectrum)$
+
+​	1）取对数：$lg X[k] = lg H[k] + lg E[k]。$
+
+​	2）进行逆变换：$x[k] = h[k] + e[k]$。
+
+在Mel频谱上面获得的倒谱系数h[k]就称为Mel频率倒谱系数，简称MFCC。总的过程如下图：
+
+### 【这里放张图片】
+
+
 
 ### 3.3.2 统计特征提取
 
 #### 3.3.2.1 时域特征（waveform）
 
-**含量纲的时域特征**
+> **含量纲的时域特征**
+>
+> 音频信号中含量纲的时域特征，常用的有十个，其中包括最大值(maximum)、最小值(minimum)、极差(range)、均值(mean)、中位数(media)、众数(mode)、标准差(standard deviation)、均方根值(root mean square/rms)、均方值(mean square/ms)、k阶中心/原点矩。
+>
 
-音频信号中含量纲的时域特征，常用的有十个，其中包括最大值(maximum)、最小值(minimum)、极差(range)、均值(mean)、中位数(media)、众数(mode)、标准差(standard deviation)、均方根值(root mean square/rms)、均方值(mean square/ms)、k阶中心/原点矩。
-
-**无量纲的时域特征**
-
-音频信号中无量纲的时域特征，分别为偏度(skewness)，峰度(kurtosis)，峰度因子(kurtosis factor)、波形因子(waveform factor)、脉冲因子(pulse factor)、裕度因子(margin factor)。
+> **无量纲的时域特征**
+>
+> 音频信号中无量纲的时域特征，分别为偏度(skewness)，峰度(kurtosis)，峰度因子(kurtosis factor)、波形因子(waveform factor)、脉冲因子(pulse factor)、裕度因子(margin factor)。
+>
 
 本次作业中我们选用其中的*均值*、*标准差*、*偏度*和*峰度*四项时域特征：
 - 均值：
@@ -674,6 +729,8 @@ https://umlpicture.oss-cn-shanghai.aliyuncs.com/%E6%95%B0%E6%8D%AE%E7%A7%91%E5%A
 只研究了声学三要素相关的知识，没有研究音乐三要素（旋律，和声，节奏）相关的内容，并没有直接的midi文件，没有生成音乐
 
 # 7. 参考文献
+
+[MFCC](https://blog.csdn.net/zouxy09/article/details/9156785/)
 
 [R语言中的遗传算法](http://blog.fens.me/algorithm-ga-r/)
 
