@@ -69,7 +69,7 @@ def traverseSamples():
 '''
 
 
-def evaluateHHM():
+def trainHHM():
     hmm_models = []
     input_folder = samplesPath
     for dirname in os.listdir(input_folder):
